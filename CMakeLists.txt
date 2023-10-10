@@ -4,12 +4,15 @@ project("MyVulkan")
 
 set(CMAKE_CXX_STANDARD 17)
 
-find_package(Vulkan REQUIRED)
 
-add_subdirectory(third_party)
+add_definitions(-DVK_ASSETS_DIR=\"${CMAKE_SOURCE_DIR}/assets/\")
+add_definitions(-DVK_SHADERS_DIR=\"${CMAKE_SOURCE_DIR}/shaders/\")
+
+find_package(Vulkan REQUIRED)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin")
 
+add_subdirectory(third_party)
 add_subdirectory(src)
 
 find_program(GLSL_VALIDATOR glslangValidator HINTS $ENV{VULKAN_SDK}/Bin/)
