@@ -8,3 +8,6 @@ target_include_directories(glfw INTERFACE glfw/include)
 
 add_library(stb_image INTERFACE)
 target_include_directories(stb_image INTERFACE stb_image)
+
+add_library(tiny_obj_loader INTERFACE)
+target_include_directories(tiny_obj_loader INTERFACE tiny_obj_loader)
