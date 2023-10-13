@@ -2,8 +2,8 @@
 
 const std::string vertPath = "../../shaders/depth.vert.spv";
 const std::string fragPath = "../../shaders/depth.frag.spv";
-const std::string MODEL_PATH = "../../assets/models/viking_room.obj";
-const std::string TEXTURE_PATH = "../../assets/textures/viking_room.png";
+const std::string MODEL_PATH = "../../assets/models/Marry.obj";
+const std::string TEXTURE_PATH = "../../assets/textures/Marry.png";
 
 
 struct Vertex {
@@ -182,7 +182,7 @@ public:
 
 		stbi_image_free(pixels);
 
-		createImage(texWidth, texHeight, mipLevels,VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT| VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, texture.image, texture.memory);
+		createImage(texWidth, texHeight, mipLevels,VK_SAMPLE_COUNT_1_BIT,VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT| VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, texture.image, texture.memory);
 
 		transitionImageLayout(texture.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,mipLevels);
 		copyBufferToImage(stagingBuffer, texture.image, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
@@ -400,7 +400,7 @@ public:
 		VkPipelineMultisampleStateCreateInfo multisampling{};
 		multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
 		multisampling.sampleShadingEnable = VK_FALSE;
-		multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+		multisampling.rasterizationSamples = msaaSamples;
 		multisampling.minSampleShading = 1.0f;
 		multisampling.pSampleMask = nullptr;
 		multisampling.alphaToCoverageEnable = VK_FALSE;
@@ -512,6 +512,8 @@ public:
 			throw std::runtime_error("failed to record command buffer!");
 		}
 	}
+
+
 
 	void drawFrame() {
 		vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
@@ -625,6 +627,7 @@ public:
 
 		UniformBufferObject ubo{};
 		ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+		ubo.model = glm::mat4(1.0f);
 		ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 		ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width  / (float)swapChainExtent.height, 0.1f, 10.0f);
 		ubo.proj[1][1] *= -1;
@@ -633,6 +636,7 @@ public:
 	}
 
 };
+
 
 int main() {
 	Triangle* app = new Triangle();
