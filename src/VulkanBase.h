@@ -31,9 +31,14 @@
 #include <array>
 #include <unordered_map>
 
+#include "camera.h"
+
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
 const int MAX_FRAMES_IN_FLIGHT = 2;
+
+float lastX = WIDTH / 2.0f;
+float lastY = HEIGHT / 2.0f;
 
 const std::vector<const char*> validationLayers = {
 	"VK_LAYER_KHRONOS_validation"
@@ -65,9 +70,17 @@ struct SwapChainSupportDetails {
 	std::vector<VkPresentModeKHR> presentModes;
 };
 
+struct UniformBufferObject {
+	glm::mat4 model;
+	glm::mat4 view;
+	glm::mat4 proj;
+};
+
+static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
+
 class VulkanBase {
 private:
-	GLFWwindow* window;
+
 	VkInstance instance;
 	VkSurfaceKHR surface;
 
@@ -79,7 +92,7 @@ private:
 		auto app = reinterpret_cast<VulkanBase*>(glfwGetWindowUserPointer(window));
 		app->framebufferResized = true;
 	}
-	
+
 	//Vulkan create functions
 
 	void createInstance() {
@@ -359,15 +372,15 @@ private:
 	void createColorResources() {
 		VkFormat colorFormat = swapChainImageFormat;
 
-		createImage(swapChainExtent.width, swapChainExtent.height, 1, msaaSamples,colorFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, color.image, color.memory);
+		createImage(swapChainExtent.width, swapChainExtent.height, 1, msaaSamples, colorFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, color.image, color.memory);
 		color.imageView = createImageView(color.image, colorFormat, VK_IMAGE_ASPECT_COLOR_BIT, 1);
 	}
 
 	void createDepthResources() {
 		VkFormat depthFormat = findDepthFormat();
 
-		createImage(swapChainExtent.width, swapChainExtent.height,1, msaaSamples,depthFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depth.image, depth.memory);
-		depth.imageView = createImageView(depth.image, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT,1);
+		createImage(swapChainExtent.width, swapChainExtent.height, 1, msaaSamples, depthFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depth.image, depth.memory);
+		depth.imageView = createImageView(depth.image, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT, 1);
 	}
 
 	void createFramebuffers() {
@@ -475,14 +488,6 @@ private:
 		if (enableValidationLayers) {
 			extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 		}
-
-		/*uint32_t extensionCount = 0;
-		vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr);
-		std::vector<VkExtensionProperties> extensions2(extensionCount);
-		vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, extensions2.data());
-		for (const auto& extension : extensions2) {
-			std::cout << extension.extensionName << "\n";
-		}*/
 
 		return extensions;
 	}
@@ -650,7 +655,7 @@ private:
 
 	//create vertex buffer
 	uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) {
-		
+
 		for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
 			if (typeFilter & (1 << i) &&
 				(memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
@@ -676,17 +681,9 @@ private:
 		return VK_SAMPLE_COUNT_1_BIT;
 	}
 
-	static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
-	{
-		auto app = reinterpret_cast<VulkanBase*>(glfwGetWindowUserPointer(window));
-		if (key == GLFW_KEY_SPACE && action == GLFW_PRESS)
-		{
-			//app->
-		}
-	}
-
 
 protected:
+	GLFWwindow* window;
 
 	VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
 	VkDevice device;
@@ -702,7 +699,7 @@ protected:
 	std::vector<VkFramebuffer> swapChainFramebuffers;
 
 	VkRenderPass renderPass;
-	
+
 	uint32_t currentFrame = 0;
 
 	VkCommandPool commandPool;
@@ -713,6 +710,8 @@ protected:
 	std::vector < VkFence> inFlightFences;
 
 	VkSampleCountFlagBits msaaSamples;
+
+	Camera camera;
 
 	struct {
 		VkImage image;
@@ -804,7 +803,7 @@ protected:
 		vkBindImageMemory(device, image, imageMemory, 0);
 	}
 
-	void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout,	
+	void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout,
 		VkImageLayout newLayout, uint32_t mipLevels) {
 		VkCommandBuffer commandBuffer = beginSingleTimeCommands();
 
@@ -883,7 +882,7 @@ protected:
 		viewInfo.image = image;
 		viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
 		viewInfo.format = format;
-		viewInfo.subresourceRange.aspectMask = aspectFlags; 
+		viewInfo.subresourceRange.aspectMask = aspectFlags;
 		viewInfo.subresourceRange.baseMipLevel = 0;
 		viewInfo.subresourceRange.levelCount = mipLevels;
 		viewInfo.subresourceRange.baseArrayLayer = 0;
@@ -1047,6 +1046,8 @@ protected:
 		return shaderModule;
 	}
 
+
+
 	void recreateSwapChain() {
 		int width = 0, height = 0;
 		glfwGetFramebufferSize(window, &width, &height);
@@ -1122,15 +1123,7 @@ public:
 		createSynObjects();
 	}
 
-	void mainLoop() {
-		while (!glfwWindowShouldClose(window)) {
-			glfwSetKeyCallback(window, key_callback);
-			glfwPollEvents();
-			drawFrame();
-		}
 
-		vkDeviceWaitIdle(device);
-	}
 	virtual void drawFrame() = 0;
 
 	virtual ~VulkanBase() {
@@ -1155,4 +1148,52 @@ public:
 
 		glfwTerminate();
 	}
+
+	void mainLoop() {
+		while (!glfwWindowShouldClose(window)) {
+			glfwSetKeyCallback(window, key_callback);
+			glfwSetCursorPosCallback(window, mouse_callback);
+			//glfwSetCursorPosCallback(window, cursor_position_callback);
+			glfwPollEvents();
+			drawFrame();
+		}
+
+		vkDeviceWaitIdle(device);
+	}
+
+	static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
+	{
+		auto app = reinterpret_cast<VulkanBase*>(glfwGetWindowUserPointer(window));
+		float cameraSpeed = 0.5;
+		if (key == GLFW_KEY_SPACE && action == GLFW_PRESS)
+		{
+			app->camera.keyboardInput(FORWARD);
+		}
+	}
+
+	static void mouse_callback(GLFWwindow* window, double xposIn, double yposIn)
+	{
+		auto app = reinterpret_cast<VulkanBase*>(glfwGetWindowUserPointer(window));
+
+		float xpos = static_cast<float>(xposIn);
+		float ypos = static_cast<float>(yposIn);
+
+
+		float xoffset = xpos - lastX;
+		float yoffset = lastY - ypos; // reversed since y-coordinates go from bottom to top
+
+		lastX = xpos;
+		lastY = ypos;
+
+		app->camera.ProcessMouseMovement(xoffset, yoffset);
+	}
+
+	UniformBufferObject ubo;
+
+	struct {
+		VkBuffer buffer;
+		VkDeviceMemory memory;
+		void* data;
+	} uniform;
 };
+

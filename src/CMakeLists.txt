@@ -2,6 +2,7 @@
 add_executable(MyVulkan
     main.cpp
     VulkanBase.h
+    camera.h
     )
 
 

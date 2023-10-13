@@ -6,6 +6,10 @@ const std::string MODEL_PATH = "../../assets/models/Marry.obj";
 const std::string TEXTURE_PATH = "../../assets/textures/Marry.png";
 
 
+glm::vec3 cameraPos = glm::vec3(0.0f, 2.0f, 3.0f);
+glm::vec3 cameraFront = glm::vec3(0.0f, 0.0f, -1.0f);
+glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
+
 struct Vertex {
 	glm::vec3 pos;
 	glm::vec3 color;
@@ -24,14 +28,9 @@ namespace std {
 	};
 }
 
-class Triangle : public VulkanBase {
+class VulkanExample : public VulkanBase {
 public:
-	
-	struct UniformBufferObject {
-		glm::mat4 model;
-		glm::mat4 view;
-		glm::mat4 proj;
-	};
+
 
 	struct {
 		VkDeviceMemory memory;
@@ -44,11 +43,7 @@ public:
 		uint32_t count;
 	} indices;
 
-	struct Uniform {
-		VkBuffer buffer;
-		VkDeviceMemory memory;
-		void* data;
-	};
+
 
 	struct {
 		VkImage image;
@@ -61,8 +56,6 @@ public:
 
 	std::vector<Vertex> vertexBuffer;
 	std::vector<uint32_t> indexBuffer;
-
-	std::array<Uniform, MAX_FRAMES_IN_FLIGHT> uniforms;
 
 	VkDescriptorSetLayout descriptorSetLayout;
 	VkDescriptorPool descriptorPool;
@@ -109,7 +102,7 @@ public:
 			}
 		}
 	}
-	
+
 	void createVertexBuffer() {
 		VkDeviceSize bufferSize = sizeof(Vertex) * vertexBuffer.size();
 
@@ -155,11 +148,16 @@ public:
 	void createUniformBuffers() {
 		VkDeviceSize bufferSize = sizeof(UniformBufferObject);
 
-		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-			createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniforms[i].buffer, uniforms[i].memory);
+		createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniform.buffer, uniform.memory);
 
-			vkMapMemory(device, uniforms[i].memory, 0, bufferSize, 0, &uniforms[i].data);
-		}
+		vkMapMemory(device, uniform.memory, 0, bufferSize, 0, &uniform.data);
+
+		//.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+		ubo.model = glm::mat4(1.0f);
+		ubo.view = camera.matrices.view;
+		ubo.proj = camera.matrices.perspective;
+
+		memcpy(uniform.data, &ubo, sizeof(ubo));
 	}
 
 	void createTextureImage() {
@@ -182,9 +180,9 @@ public:
 
 		stbi_image_free(pixels);
 
-		createImage(texWidth, texHeight, mipLevels,VK_SAMPLE_COUNT_1_BIT,VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT| VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, texture.image, texture.memory);
+		createImage(texWidth, texHeight, mipLevels, VK_SAMPLE_COUNT_1_BIT, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, texture.image, texture.memory);
 
-		transitionImageLayout(texture.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,mipLevels);
+		transitionImageLayout(texture.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, mipLevels);
 		copyBufferToImage(stagingBuffer, texture.image, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
 		//transitionImageLayout(texture.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,mipLevels);
 		generateMipmaps(texture.image, VK_FORMAT_R8G8B8A8_SRGB, texWidth, texHeight, mipLevels);
@@ -194,7 +192,7 @@ public:
 	}
 
 	void createTextureImageView() {
-		texture.imageView = createImageView(texture.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT,mipLevels);
+		texture.imageView = createImageView(texture.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, mipLevels);
 	}
 
 	void createTextureSampler() {
@@ -272,7 +270,7 @@ public:
 	}
 
 	void createDescriptorSets() {
-		
+
 		VkDescriptorSetAllocateInfo allocInfo{};
 		allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
 		allocInfo.descriptorPool = descriptorPool;
@@ -285,7 +283,7 @@ public:
 
 		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
 			VkDescriptorBufferInfo bufferInfo{};
-			bufferInfo.buffer = uniforms[i].buffer;
+			bufferInfo.buffer = uniform.buffer;
 			bufferInfo.offset = 0;
 			bufferInfo.range = sizeof(UniformBufferObject);
 
@@ -390,7 +388,7 @@ public:
 		rasterizer.rasterizerDiscardEnable = VK_FALSE;
 		rasterizer.polygonMode = VK_POLYGON_MODE_FILL;	///change
 		rasterizer.lineWidth = 1.0f;					///cahnge
-		rasterizer.cullMode = VK_CULL_MODE_FRONT_BIT;	///CHANGE
+		rasterizer.cullMode = VK_CULL_MODE_NONE;	///CHANGE
 		rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE; ///
 		rasterizer.depthBiasEnable = VK_FALSE;
 		rasterizer.depthBiasConstantFactor = 0.0f;
@@ -513,8 +511,6 @@ public:
 		}
 	}
 
-
-
 	void drawFrame() {
 		vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
 
@@ -579,7 +575,15 @@ public:
 		currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 	}
 
-	~Triangle() {
+	VulkanExample() {
+		camera.setPosition(glm::vec3(0.0f, 2.0f, 3.0f));
+		camera.setDirction(glm::vec3(0.0f, 0.0f, -1.0f));
+		camera.setUp(glm::vec3(0.0f, 1.0f, 0.0f));
+		camera.setView();
+		camera.setPerspective(45.0f, swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 10.0f);
+	}
+
+	~VulkanExample() {
 
 		vkDestroySampler(device, texture.sampler, nullptr);
 		vkDestroyImageView(device, texture.imageView, nullptr);
@@ -592,10 +596,9 @@ public:
 		vkDestroyBuffer(device, vertices.buffer, nullptr);
 		vkFreeMemory(device, vertices.memory, nullptr);
 
-		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-			vkDestroyBuffer(device, uniforms[i].buffer, nullptr);
-			vkFreeMemory(device, uniforms[i].memory, nullptr);
-		}
+		vkDestroyBuffer(device, uniform.buffer, nullptr);
+		vkFreeMemory(device, uniform.memory, nullptr);
+
 		vkDestroyDescriptorPool(device, descriptorPool, nullptr);
 		vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
 
@@ -604,7 +607,7 @@ public:
 
 	}
 
-	void initVulkan() {
+	void prepare() {
 		VulkanBase::initVulkan();
 		loadModel();
 		createVertexBuffer();
@@ -620,30 +623,22 @@ public:
 	}
 
 	void updateUniformBuffer(uint32_t currentImage) {
-		static auto startTime = std::chrono::high_resolution_clock::now();
 
-		auto currentTime = std::chrono::high_resolution_clock::now();
-		float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+		ubo.proj = camera.matrices.perspective;
 
-		UniformBufferObject ubo{};
-		ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-		ubo.model = glm::mat4(1.0f);
-		ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-		ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width  / (float)swapChainExtent.height, 0.1f, 10.0f);
-		ubo.proj[1][1] *= -1;
-
-		memcpy(uniforms[currentImage].data, &ubo, sizeof(ubo));
+		memcpy(uniform.data, &ubo, sizeof(ubo));
 	}
 
 };
 
 
+
 int main() {
-	Triangle* app = new Triangle();
+	VulkanExample* app = new VulkanExample();
 
 	try {
 		app->initWindow();
-		app->initVulkan();
+		app->prepare();
 		app->mainLoop();
 	}
 	catch (const std::exception& e) {
