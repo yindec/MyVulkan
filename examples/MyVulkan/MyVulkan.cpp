@@ -6,9 +6,6 @@ const std::string MODEL_PATH = "../../assets/models/Marry.obj";
 const std::string TEXTURE_PATH = "../../assets/textures/Marry.png";
 
 
-glm::vec3 cameraPos = glm::vec3(0.0f, 2.0f, 3.0f);
-glm::vec3 cameraFront = glm::vec3(0.0f, 0.0f, -1.0f);
-glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
 
 struct Vertex {
 	glm::vec3 pos;
@@ -30,8 +27,6 @@ namespace std {
 
 class VulkanExample : public VulkanBase {
 public:
-
-
 	struct {
 		VkDeviceMemory memory;
 		VkBuffer buffer;
@@ -576,11 +571,13 @@ public:
 	}
 
 	VulkanExample() {
-		camera.setPosition(glm::vec3(0.0f, 2.0f, 3.0f));
-		camera.setDirction(glm::vec3(0.0f, 0.0f, -1.0f));
-		camera.setUp(glm::vec3(0.0f, 1.0f, 0.0f));
-		camera.setView();
+		camera.type = Camera::CameraType::firstperson;
+		camera.flipY = true;
+		camera.setPosition(glm::vec3(0.0f, 0.0f, -8.0f));
+		camera.setRotation(glm::vec3(0.0f, 0.0f, 0.0f));
+		camera.setRotationSpeed(0.05f);
 		camera.setPerspective(45.0f, swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 10.0f);
+
 	}
 
 	~VulkanExample() {
@@ -625,6 +622,7 @@ public:
 	void updateUniformBuffer(uint32_t currentImage) {
 
 		ubo.proj = camera.matrices.perspective;
+		ubo.view = camera.matrices.view;
 
 		memcpy(uniform.data, &ubo, sizeof(ubo));
 	}

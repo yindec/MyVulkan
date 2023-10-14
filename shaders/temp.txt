@@ -1,0 +1,66 @@
+# Add source to this project's executable.
+add_executable(MyVulkan
+    main.cpp
+    VulkanBase.h
+    camera.h
+    )
+
+set_property(TARGET MyVulkan PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:MyVulkan>")
+
+target_include_directories(MyVulkan PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+target_link_libraries(MyVulkan glm glfw stb_image tiny_obj_loader Vulkan::Vulkan)
+
+target_link_libraries(MyVulkan ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/glfw/lib-vc2022/glfw3.lib)
+
+add_dependencies(MyVulkan Shaders)
+
+
+
+add_executable(triangle
+    main.cpp
+    VulkanBase.h
+    camera.h
+    )
+
+set_property(TARGET triangle PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:triangle>")
+
+target_include_directories(triangle PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+target_link_libraries(triangle glm glfw stb_image tiny_obj_loader Vulkan::Vulkan)
+
+target_link_libraries(triangle ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/glfw/lib-vc2022/glfw3.lib)
+
+add_dependencies(triangle Shaders)
+
+
+
+
+function(buildExample EXAMPLE_NAME)
+    SET(EXAMPLE_FOLDER ${CMAKE_CURRENT_SOURCE_DIR}/${EXAMPLE_NAME})
+
+    file(GLOB SOURCE *.cpp ${BASE_HEADERS} ${EXAMPLE_FOLDER}/*.cpp)
+    SET(MAIN_CPP ${EXAMPLE_FOLDER}/${EXAMPLE_NAME}.cpp)
+	if(EXISTS ${EXAMPLE_FOLDER}/main.cpp)
+		SET(MAIN_CPP ${EXAMPLE_FOLDER}/main.cpp)
+	ENDIF()
+    add_executable(${EXAMPLE_NAME} MAIN_CPP)
+
+    set_property(TARGET ${EXAMPLE_NAME} PROPERTY VS_DEBUGGER_WORKING_DIRECTORY/${EXAMPLE_NAME} "$<TARGET_FILE_DIR:${EXAMPLE_NAME}>")
+    target_include_directories(${EXAMPLE_NAME} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/../base/")
+    target_link_libraries(${EXAMPLE_NAME} glm glfw stb_image tiny_obj_loader Vulkan::Vulkan)
+    target_link_libraries(${EXAMPLE_NAME} ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/glfw/lib-vc2022/glfw3.lib)
+    add_dependencies(${EXAMPLE_NAME} Shaders)
+endfunction(buildExample)
+
+# Build all examples
+function(buildExamples)
+	foreach(EXAMPLE ${EXAMPLES})
+		buildExample(${EXAMPLE})
+	endforeach(EXAMPLE)
+endfunction(buildExamples)
+
+set(EXAMPLES
+    MyVulkan
+    triangle
+)
+
+buildExamples()

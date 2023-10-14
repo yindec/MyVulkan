@@ -37,8 +37,8 @@ const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
 const int MAX_FRAMES_IN_FLIGHT = 2;
 
-float lastX = WIDTH / 2.0f;
-float lastY = HEIGHT / 2.0f;
+double lastX = WIDTH / 2.0f + 1;
+double lastY = HEIGHT / 2.0f + 1;
 
 const std::vector<const char*> validationLayers = {
 	"VK_LAYER_KHRONOS_validation"
@@ -712,6 +712,13 @@ protected:
 	VkSampleCountFlagBits msaaSamples;
 
 	Camera camera;
+	glm::vec2 mousePos;
+
+	struct {
+		bool left = false;
+		bool right = false;
+		bool middle = false;
+	} mouseButtons;
 
 	struct {
 		VkImage image;
@@ -1121,6 +1128,10 @@ public:
 		createCommandPool();
 		createCommandBuffers();
 		createSynObjects();
+
+		glfwSetCursorPos(window, WIDTH /2, HEIGHT /2);
+
+
 	}
 
 
@@ -1152,8 +1163,12 @@ public:
 	void mainLoop() {
 		while (!glfwWindowShouldClose(window)) {
 			glfwSetKeyCallback(window, key_callback);
-			glfwSetCursorPosCallback(window, mouse_callback);
-			//glfwSetCursorPosCallback(window, cursor_position_callback);
+			//glfwSetCursorPosCallback(window, mouse_button_callback);
+			glfwSetCursorPosCallback(window, cursor_callback);
+			glfwSetMouseButtonCallback(window, mouse_callback);
+			
+
+			
 			glfwPollEvents();
 			drawFrame();
 		}
@@ -1164,28 +1179,47 @@ public:
 	static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
 	{
 		auto app = reinterpret_cast<VulkanBase*>(glfwGetWindowUserPointer(window));
-		float cameraSpeed = 0.5;
-		if (key == GLFW_KEY_SPACE && action == GLFW_PRESS)
+		
+		if (key == GLFW_KEY_W && action == GLFW_PRESS)
 		{
-			app->camera.keyboardInput(FORWARD);
+			
+		}
+		if (key == GLFW_KEY_S && action == GLFW_PRESS)
+		{
+
 		}
 	}
 
-	static void mouse_callback(GLFWwindow* window, double xposIn, double yposIn)
+	static void cursor_callback(GLFWwindow* window, double x, double y)
 	{
 		auto app = reinterpret_cast<VulkanBase*>(glfwGetWindowUserPointer(window));
 
-		float xpos = static_cast<float>(xposIn);
-		float ypos = static_cast<float>(yposIn);
+		int32_t dx = (int32_t)app->mousePos.x - (int32_t)x;
+		int32_t dy = (int32_t)app->mousePos.y - (int32_t)y;
+
+		if(glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS)
+			app->camera.rotate(glm::vec3(dy * app->camera.rotationSpeed, -dx * app->camera.rotationSpeed, 0.0f));
+		
+		if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS)
+			app->camera.translate(glm::vec3(-0.0f, 0.0f, dy * .005f));
+
+		if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS)
+			app->camera.translate(glm::vec3(-dx * 0.005f, -dy * 0.005f, 0.0f));
+
+		app->mousePos.x = x;
+		app->mousePos.y = y;
+	}
 
 
-		float xoffset = xpos - lastX;
-		float yoffset = lastY - ypos; // reversed since y-coordinates go from bottom to top
-
-		lastX = xpos;
-		lastY = ypos;
-
-		app->camera.ProcessMouseMovement(xoffset, yoffset);
+	static void mouse_callback(GLFWwindow* window, int button, int action, int mods)
+	{
+		if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS)
+		{
+			//double xpos, ypos;
+			////getting cursor position
+			//glfwGetCursorPos(window, &xpos, &ypos);
+			//std::cout << "Cursor Position at (" << xpos << " : " << ypos << std::endl;
+		}
 	}
 
 	UniformBufferObject ubo;
