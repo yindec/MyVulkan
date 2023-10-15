@@ -78,7 +78,7 @@ struct UniformBufferObject {
 
 static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
 
-class VulkanBase {
+class VulkanExampleBase {
 private:
 
 	VkInstance instance;
@@ -89,7 +89,7 @@ private:
 	VkPhysicalDeviceMemoryProperties memProperties;
 	VkMemoryRequirements memRequirements;
 	static void framebufferResizeCallback(GLFWwindow* window, int width, int height) {
-		auto app = reinterpret_cast<VulkanBase*>(glfwGetWindowUserPointer(window));
+		auto app = reinterpret_cast<VulkanExampleBase*>(glfwGetWindowUserPointer(window));
 		app->framebufferResized = true;
 	}
 
@@ -1129,7 +1129,7 @@ public:
 		createCommandBuffers();
 		createSynObjects();
 
-		glfwSetCursorPos(window, WIDTH /2, HEIGHT /2);
+		glfwSetCursorPos(window, WIDTH / 2, HEIGHT / 2);
 
 
 	}
@@ -1137,7 +1137,7 @@ public:
 
 	virtual void drawFrame() = 0;
 
-	virtual ~VulkanBase() {
+	virtual ~VulkanExampleBase() {
 		cleanupSwapChain();
 
 		vkDestroyRenderPass(device, renderPass, nullptr);
@@ -1162,13 +1162,13 @@ public:
 
 	void mainLoop() {
 		while (!glfwWindowShouldClose(window)) {
-			glfwSetKeyCallback(window, key_callback);
-			//glfwSetCursorPosCallback(window, mouse_button_callback);
-			glfwSetCursorPosCallback(window, cursor_callback);
-			glfwSetMouseButtonCallback(window, mouse_callback);
-			
 
-			
+			glfwSetKeyCallback(window, key_callback);
+			glfwSetCursorPosCallback(window, cursor_position_callback);
+			glfwSetMouseButtonCallback(window, mouse_button_callback);
+			glfwSetScrollCallback(window, scroll_callback);
+
+
 			glfwPollEvents();
 			drawFrame();
 		}
@@ -1178,48 +1178,127 @@ public:
 
 	static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
 	{
-		auto app = reinterpret_cast<VulkanBase*>(glfwGetWindowUserPointer(window));
-		
-		if (key == GLFW_KEY_W && action == GLFW_PRESS)
-		{
-			
-		}
-		if (key == GLFW_KEY_S && action == GLFW_PRESS)
-		{
+		auto app = reinterpret_cast<VulkanExampleBase*>(glfwGetWindowUserPointer(window));
 
+		switch (action)
+		{
+		case GLFW_PRESS:
+			if (app->camera.type = Camera::firstperson)
+			{
+				switch (key)
+				{
+				case GLFW_KEY_W:
+					app->camera.keys.up = true;
+					break;
+				case GLFW_KEY_S:
+					app->camera.keys.down = true;
+					break;
+				case GLFW_KEY_A:
+					app->camera.keys.left = true;
+					break;
+				case GLFW_KEY_D:
+					app->camera.keys.right = true;
+					break;
+				}
+			}
+			break;
+		case GLFW_RELEASE:
+			if (app->camera.type = Camera::firstperson)
+			{
+				switch (key)
+				{
+				case GLFW_KEY_W:
+					app->camera.keys.up = false;
+					break;
+				case GLFW_KEY_S:
+					app->camera.keys.down = false;
+					break;
+				case GLFW_KEY_A:
+					app->camera.keys.left = false;
+					break;
+				case GLFW_KEY_D:
+					app->camera.keys.right = false;
+					break;
+				}
+			}
+			break;
 		}
 	}
 
-	static void cursor_callback(GLFWwindow* window, double x, double y)
+	static void cursor_position_callback(GLFWwindow* window, double x, double y)
 	{
-		auto app = reinterpret_cast<VulkanBase*>(glfwGetWindowUserPointer(window));
+		auto app = reinterpret_cast<VulkanExampleBase*>(glfwGetWindowUserPointer(window));
 
 		int32_t dx = (int32_t)app->mousePos.x - (int32_t)x;
 		int32_t dy = (int32_t)app->mousePos.y - (int32_t)y;
 
-		if(glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS)
+
+		if (app->mouseButtons.left)
+		{
 			app->camera.rotate(glm::vec3(dy * app->camera.rotationSpeed, -dx * app->camera.rotationSpeed, 0.0f));
-		
-		if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS)
+
+		}
+			
+		if (app->mouseButtons.middle) {
 			app->camera.translate(glm::vec3(-0.0f, 0.0f, dy * .005f));
+		}
+			
 
-		if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS)
+		if (app->mouseButtons.right)
+		{
 			app->camera.translate(glm::vec3(-dx * 0.005f, -dy * 0.005f, 0.0f));
+		}
 
-		app->mousePos.x = x;
-		app->mousePos.y = y;
+		app->mousePos = glm::vec2((float)x, (float)y);
 	}
 
-
-	static void mouse_callback(GLFWwindow* window, int button, int action, int mods)
+	static void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 	{
-		if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS)
+		auto app = reinterpret_cast<VulkanExampleBase*>(glfwGetWindowUserPointer(window));
+
+		switch (action)
 		{
-			//double xpos, ypos;
-			////getting cursor position
-			//glfwGetCursorPos(window, &xpos, &ypos);
-			//std::cout << "Cursor Position at (" << xpos << " : " << ypos << std::endl;
+		case GLFW_PRESS:
+			if (app->camera.type = Camera::firstperson)
+			{
+				switch (button)
+				{
+				case GLFW_MOUSE_BUTTON_LEFT:
+					app->mouseButtons.left = true;
+					break;
+				case GLFW_MOUSE_BUTTON_MIDDLE:
+					app->mouseButtons.middle = true;
+					break;
+				case GLFW_MOUSE_BUTTON_RIGHT:
+					app->mouseButtons.right = true;
+					break;
+				}
+			}
+			break;
+		case GLFW_RELEASE:
+			if (app->camera.type = Camera::firstperson)
+			{
+				switch (button)
+				{
+				case GLFW_MOUSE_BUTTON_LEFT:
+					app->mouseButtons.left = false;
+					break;
+				case GLFW_MOUSE_BUTTON_MIDDLE:
+					app->mouseButtons.middle = false;
+					break;
+				case GLFW_MOUSE_BUTTON_RIGHT:
+					app->mouseButtons.right = false;
+					break;
+				}
+			}
+			break;
 		}
+	}
+
+	static void scroll_callback(GLFWwindow* window, double dx, double dy) {
+		// Handle scroll wheel events
+		auto app = reinterpret_cast<VulkanExampleBase*>(glfwGetWindowUserPointer(window));
+		app->camera.translate(glm::vec3(-0.0f, 0.0f, dy * 0.5f));
 	}
 
 	UniformBufferObject ubo;
@@ -1230,4 +1309,3 @@ public:
 		void* data;
 	} uniform;
 };
-

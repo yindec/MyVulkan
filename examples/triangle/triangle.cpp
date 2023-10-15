@@ -25,7 +25,7 @@ namespace std {
 	};
 }
 
-class VulkanExample : public VulkanBase {
+class VulkanExample : public VulkanExampleBase {
 public:
 	struct {
 		VkDeviceMemory memory;
@@ -520,6 +520,14 @@ public:
 		else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
 			throw std::runtime_error("failed to acquire swap chain image!");
 		}
+
+		/// <summary>
+		/// ///
+		/// </summary>
+		auto tStart = std::chrono::high_resolution_clock::now();
+		auto tEnd = std::chrono::high_resolution_clock::now();
+		auto tDiff = std::chrono::duration<double, std::milli>(tEnd - tStart).count();
+		camera.update(tDiff * 10);
 		updateUniformBuffer(currentFrame);
 		vkResetFences(device, 1, &inFlightFences[currentFrame]);
 
@@ -605,7 +613,7 @@ public:
 	}
 
 	void prepare() {
-		VulkanBase::initVulkan();
+		VulkanExampleBase::initVulkan();
 		loadModel();
 		createVertexBuffer();
 		createIndexBuffer();

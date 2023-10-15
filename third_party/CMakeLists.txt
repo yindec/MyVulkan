@@ -11,3 +11,6 @@ target_include_directories(stb_image INTERFACE stb_image)
 
 add_library(tiny_obj_loader INTERFACE)
 target_include_directories(tiny_obj_loader INTERFACE tiny_obj_loader)
+
+add_library(imgui INTERFACE)
+target_include_directories(imgui INTERFACE imgui)
