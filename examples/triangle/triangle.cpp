@@ -1,7 +1,7 @@
 #include "VulkanBase.h"
 
-const std::string vertPath = "../../shaders/depth.vert.spv";
-const std::string fragPath = "../../shaders/depth.frag.spv";
+const std::string vertPath = "../../shaders/triangle/triangle.vert.spv";
+const std::string fragPath = "../../shaders/triangle/triangle.frag.spv";
 const std::string MODEL_PATH = "../../assets/models/Marry.obj";
 const std::string TEXTURE_PATH = "../../assets/textures/Marry.png";
 
@@ -10,20 +10,20 @@ const std::string TEXTURE_PATH = "../../assets/textures/Marry.png";
 struct Vertex {
 	glm::vec3 pos;
 	glm::vec3 color;
-	glm::vec2 texCoord;
+	//glm::vec2 texCoord;
 
 	bool operator==(const Vertex& other) const {
-		return pos == other.pos && color == other.color && texCoord == other.texCoord;
+		return pos == other.pos && color == other.color;
 	}
 };
-
+/*
 namespace std {
 	template<> struct hash<Vertex> {
 		size_t operator()(Vertex const& vertex) const {
 			return ((hash<glm::vec3>()(vertex.pos) ^ (hash<glm::vec3>()(vertex.color) << 1)) >> 1) ^ (hash<glm::vec2>()(vertex.texCoord) << 1);
 		}
 	};
-}
+}*/
 
 class VulkanExample : public VulkanExampleBase {
 public:
@@ -59,7 +59,7 @@ public:
 	VkPipelineLayout pipelineLayout;
 	VkPipeline graphicsPipeline;
 
-	void loadModel() {
+	/*void loadModel() {
 		tinyobj::attrib_t attrib;
 		std::vector<tinyobj::shape_t> shapes;
 		std::vector<tinyobj::material_t> materials;
@@ -96,9 +96,15 @@ public:
 				indexBuffer.push_back(uniqueVertices[vertex]);
 			}
 		}
-	}
+	}*/
 
 	void createVertexBuffer() {
+		vertexBuffer = {
+			{ {  1.0f,  1.0f, 0.0f }, { 1.0f, 0.0f, 0.0f } },
+			{ { -1.0f,  1.0f, 0.0f }, { 0.0f, 1.0f, 0.0f } },
+			{ {  0.0f, -1.0f, 0.0f }, { 0.0f, 0.0f, 1.0f } }
+		};
+
 		VkDeviceSize bufferSize = sizeof(Vertex) * vertexBuffer.size();
 
 		VkBuffer stagingBuffer;
@@ -120,6 +126,9 @@ public:
 	}
 
 	void createIndexBuffer() {
+		indexBuffer = {
+			0, 1, 2
+		};
 		indices.count = static_cast<uint32_t>(indexBuffer.size());
 		VkDeviceSize bufferSize = sizeof(uint32_t) * indexBuffer.size();
 
@@ -336,7 +345,7 @@ public:
 		bindingDescription.stride = sizeof(Vertex);
 		bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
-		std::array<VkVertexInputAttributeDescription, 3> attributeDescriptions{};
+		std::array<VkVertexInputAttributeDescription, 2> attributeDescriptions{};
 		attributeDescriptions[0].binding = 0;
 		attributeDescriptions[0].location = 0;
 		attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
@@ -345,10 +354,6 @@ public:
 		attributeDescriptions[1].location = 1;
 		attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
 		attributeDescriptions[1].offset = offsetof(Vertex, color);
-		attributeDescriptions[2].binding = 0;
-		attributeDescriptions[2].location = 2;
-		attributeDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
-		attributeDescriptions[2].offset = offsetof(Vertex, texCoord);
 
 		VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
 		vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -579,11 +584,11 @@ public:
 	}
 
 	VulkanExample() {
-		camera.type = Camera::CameraType::firstperson;
-		camera.flipY = true;
-		camera.setPosition(glm::vec3(0.0f, 0.0f, -8.0f));
+		camera.type = Camera::CameraType::lookat;
+		camera.flipY = false;
+		camera.setPosition(glm::vec3(0.0f, 0.0f, -2.5f));
 		camera.setRotation(glm::vec3(0.0f, 0.0f, 0.0f));
-		camera.setRotationSpeed(0.05f);
+		//camera.setRotationSpeed(0.2f);
 		camera.setPerspective(45.0f, swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 10.0f);
 
 	}
@@ -614,7 +619,7 @@ public:
 
 	void prepare() {
 		VulkanExampleBase::initVulkan();
-		loadModel();
+		//loadModel();
 		createVertexBuffer();
 		createIndexBuffer();
 		createUniformBuffers();
