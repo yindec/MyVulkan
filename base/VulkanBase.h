@@ -81,6 +81,8 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
 class VulkanExampleBase {
 private:
 
+	bool CrtlModel = true;
+
 	VkInstance instance;
 	VkSurfaceKHR surface;
 
@@ -1183,8 +1185,7 @@ public:
 		switch (action)
 		{
 		case GLFW_PRESS:
-			if (app->camera.type = Camera::firstperson)
-			{
+			if (app->camera.type == Camera::firstperson) {
 				switch (key)
 				{
 				case GLFW_KEY_W:
@@ -1203,8 +1204,7 @@ public:
 			}
 			break;
 		case GLFW_RELEASE:
-			if (app->camera.type = Camera::firstperson)
-			{
+			if (app->camera.type == Camera::firstperson) {
 				switch (key)
 				{
 				case GLFW_KEY_W:
@@ -1255,20 +1255,21 @@ public:
 	static void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 	{
 		auto app = reinterpret_cast<VulkanExampleBase*>(glfwGetWindowUserPointer(window));
+
 		switch (action)
 		{
 		case GLFW_PRESS:
 			switch (button)
 			{
-				case GLFW_MOUSE_BUTTON_LEFT:
-					app->mouseButtons.left = true;
-					break;
-				case GLFW_MOUSE_BUTTON_RIGHT:
-					app->mouseButtons.right = true;
-					break;
-				case GLFW_MOUSE_BUTTON_MIDDLE:
-					app->mouseButtons.middle = true;
-					break;
+			case GLFW_MOUSE_BUTTON_LEFT:
+				app->mouseButtons.left = true;
+				break;
+			case GLFW_MOUSE_BUTTON_RIGHT:
+				app->mouseButtons.right = true;
+				break;
+			case GLFW_MOUSE_BUTTON_MIDDLE:
+				app->mouseButtons.middle = true;
+				break;
 			}
 			break;
 		case GLFW_RELEASE:
@@ -1286,8 +1287,6 @@ public:
 			}
 			break;
 		}
-
-		
 	}
 
 	static void scroll_callback(GLFWwindow* window, double dx, double dy) {
@@ -1303,21 +1302,4 @@ public:
 		VkDeviceMemory memory;
 		void* data;
 	} uniform;
-
-
-	void handleMouseMove(int32_t x, int32_t y) {
-		int32_t dx = (int32_t)mousePos.x - x;
-		int32_t dy = (int32_t)mousePos.y - y;
-
-		if (mouseButtons.left) {
-			camera.rotate(glm::vec3(dy * camera.rotationSpeed, -dx * camera.rotationSpeed, 0.0f));
-		}
-		if (mouseButtons.right) {
-			camera.translate(glm::vec3(-0.0f, 0.0f, dy * .005f));
-		}
-		if (mouseButtons.middle) {
-			camera.translate(glm::vec3(-dx * 0.005f, -dy * 0.005f, 0.0f));
-		}
-		mousePos = glm::vec2((float)x, (float)y);
-	}
 };

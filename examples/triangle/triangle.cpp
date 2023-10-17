@@ -392,6 +392,7 @@ public:
 		rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE; ///
 		rasterizer.depthBiasEnable = VK_FALSE;
 		rasterizer.depthBiasConstantFactor = 0.0f;
+
 		rasterizer.depthBiasClamp = 0.0f;
 		rasterizer.depthBiasSlopeFactor = 0.0f;
 
@@ -455,7 +456,11 @@ public:
 
 		vkDestroyShaderModule(device, vertShaderModule, nullptr);
 		vkDestroyShaderModule(device, fragShaderModule, nullptr);
+
 	}
+
+
+
 
 	void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) {
 		VkCommandBufferBeginInfo beginInfo{};
@@ -532,7 +537,8 @@ public:
 		auto tStart = std::chrono::high_resolution_clock::now();
 		auto tEnd = std::chrono::high_resolution_clock::now();
 		auto tDiff = std::chrono::duration<double, std::milli>(tEnd - tStart).count();
-		camera.update(tDiff * 10);
+		camera.update(tDiff);
+
 		updateUniformBuffer(currentFrame);
 		vkResetFences(device, 1, &inFlightFences[currentFrame]);
 
@@ -584,11 +590,13 @@ public:
 	}
 
 	VulkanExample() {
+		
+		//camera.flipY = false;
+		//camera.setPosition(glm::vec3(0.0f, 0.0f, -2.5f));
 		camera.type = Camera::CameraType::lookat;
-		camera.flipY = false;
 		camera.setPosition(glm::vec3(0.0f, 0.0f, -2.5f));
-		camera.setRotation(glm::vec3(0.0f, 0.0f, 0.0f));
-		//camera.setRotationSpeed(0.2f);
+		camera.setRotation(glm::vec3(0.0f)); 
+		//camera.setRotationSpeed(0.4f);
 		camera.setPerspective(45.0f, swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 10.0f);
 
 	}
@@ -631,15 +639,68 @@ public:
 		createDescriptorSets();
 		createGraphicsPipeline();
 	}
-
 	void updateUniformBuffer(uint32_t currentImage) {
 
 		ubo.proj = camera.matrices.perspective;
 		ubo.view = camera.matrices.view;
 
+		
 		memcpy(uniform.data, &ubo, sizeof(ubo));
+
+		
 	}
 
+	glm::mat4 setView(glm::vec3 eye, glm::vec3 at, glm::vec3 tempUp) {
+		glm::vec3 zaxis = glm::normalize(at - eye);
+		glm::vec3 xaxis = glm::normalize(glm::cross(tempUp, zaxis));
+		glm::vec3 yaxis = glm::cross(zaxis, xaxis);
+
+		glm::mat4 result(1);
+		result[0][0] = xaxis.x;
+		result[1][0] = xaxis.y;
+		result[2][0] = xaxis.z;
+		
+		result[0][1] = yaxis.x;
+		result[1][1] = yaxis.y;
+		result[2][1] = yaxis.z;
+
+		result[0][2] = zaxis.x;
+		result[1][2] = zaxis.y;
+		result[2][2] = zaxis.z;
+
+		result[3][0] = -glm::dot(xaxis, eye);
+		result[3][1] = -glm::dot(yaxis, eye);
+		result[3][2] = -glm::dot(zaxis, eye);
+
+		
+		return result;
+	}
+
+	glm::mat4 setView2(glm::vec3 eye, glm::vec3 at, glm::vec3 tempUp) {
+		glm::vec3 zaxis = glm::normalize(at - eye);
+		glm::vec3 xaxis = glm::normalize(glm::cross(zaxis, tempUp));
+		glm::vec3 yaxis = glm::cross(xaxis, zaxis);
+
+		glm::mat4 result(1);
+		result[0][0] = xaxis.x;
+		result[1][0] = xaxis.y;
+		result[2][0] = xaxis.z;
+
+		result[0][1] = yaxis.x;
+		result[1][1] = yaxis.y;
+		result[2][1] = yaxis.z;
+		
+		result[0][2] = -zaxis.x;
+		result[1][2] = -zaxis.y;
+		result[2][2] = -zaxis.z;
+		
+		
+		result[3][0] = -glm::dot(xaxis, eye);
+		result[3][1] = -glm::dot(yaxis, eye);
+		result[3][2] =  glm::dot(zaxis, eye);
+
+		return result;
+	}
 };
 
 
