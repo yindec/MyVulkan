@@ -32,6 +32,7 @@
 #include <unordered_map>
 
 #include "camera.h"
+#include "VulkanTools.h"
 
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
@@ -206,7 +207,7 @@ private:
 			throw std::runtime_error("failed to create logical device!");
 		}
 
-		vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &graphicsQueue);
+		vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &queue);
 		vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
 	}
 
@@ -666,7 +667,7 @@ protected:
 
 	VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
 	VkDevice device;
-	VkQueue graphicsQueue;
+	VkQueue queue;
 	VkQueue presentQueue;
 
 	VkSwapchainKHR swapChain;
@@ -992,8 +993,8 @@ protected:
 		submitInfo.commandBufferCount = 1;
 		submitInfo.pCommandBuffers = &commandBuffer;
 
-		vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
-		vkQueueWaitIdle(graphicsQueue);
+		vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE);
+		vkQueueWaitIdle(queue);
 
 		vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
 	}

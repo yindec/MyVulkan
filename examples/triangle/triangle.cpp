@@ -57,50 +57,80 @@ public:
 			{ { -1.0f,  1.0f, 0.0f }, { 0.0f, 1.0f, 0.0f } },
 			{ {  0.0f, -1.0f, 0.0f }, { 0.0f, 0.0f, 1.0f } }
 		};
-
-		VkDeviceSize bufferSize = sizeof(Vertex) * vertexBuffer.size();
-
-		VkBuffer stagingBuffer;
-		VkDeviceMemory stagingBufferMemory;
-		createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
-
-		void* data;
-		vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &data);
-		memcpy(data, vertexBuffer.data(), (size_t)bufferSize);
-		vkUnmapMemory(device, stagingBufferMemory);
-
-		createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertices.buffer, vertices.memory);
-
-		copyBuffer(stagingBuffer, vertices.buffer, bufferSize);
-
-		vkDestroyBuffer(device, stagingBuffer, nullptr);
-		vkFreeMemory(device, stagingBufferMemory, nullptr);
-
-	}
-
-	void createIndexBuffer() {
-		std::vector<uint32_t> indexBuffer;
-		indexBuffer = {
-			0, 1, 2
-		};
+		uint32_t vertexBufferSize = static_cast<uint32_t>(vertexBuffer.size()) * sizeof(Vertex);
+		
+		std::vector<uint32_t> indexBuffer{ 0, 1, 2 };
 		indices.count = static_cast<uint32_t>(indexBuffer.size());
-		VkDeviceSize bufferSize = sizeof(uint32_t) * indexBuffer.size();
+		uint32_t indexBufferSize = indices.count * sizeof(uint32_t);
 
-		VkBuffer stagingBuffer;
-		VkDeviceMemory stagingBufferMemory;
-		createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
+		struct StagingBuffer {
+			VkDeviceMemory memory;
+			VkBuffer buffer;
+		};
+
+		struct {
+			StagingBuffer vertices;
+			StagingBuffer indices;
+		} stagingBuffers;
 
 		void* data;
-		vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &data);
-		memcpy(data, indexBuffer.data(), (size_t)bufferSize);
-		vkUnmapMemory(device, stagingBufferMemory);
 
-		createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, indices.buffer, indices.memory);
+		createBuffer(vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffers.vertices.buffer, stagingBuffers.vertices.memory);
+			
+		vkMapMemory(device, stagingBuffers.vertices.memory, 0, vertexBufferSize, 0, &data);
+		memcpy(data, vertexBuffer.data(), (size_t)vertexBufferSize);
+		vkUnmapMemory(device, stagingBuffers.vertices.memory);
 
-		copyBuffer(stagingBuffer, indices.buffer, bufferSize);
+		createBuffer(vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertices.buffer, vertices.memory);
 
-		vkDestroyBuffer(device, stagingBuffer, nullptr);
-		vkFreeMemory(device, stagingBufferMemory, nullptr);
+		createBuffer(indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffers.indices.buffer, stagingBuffers.indices.memory);
+		vkMapMemory(device, stagingBuffers.indices.memory, 0, indexBufferSize, 0, &data);
+		memcpy(data, indexBuffer.data(), (size_t)indexBufferSize);
+		vkUnmapMemory(device, stagingBuffers.indices.memory);
+		createBuffer(indexBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, indices.buffer, indices.memory);
+
+		//prepare command
+		VkCommandBuffer copyCmd = beginSingleTimeCommands();
+		VkCommandBufferAllocateInfo cmdBufferAllocInfo{};
+		cmdBufferAllocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+		cmdBufferAllocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+		cmdBufferAllocInfo.commandPool = commandPool;
+		cmdBufferAllocInfo.commandBufferCount = 1;
+		vkAllocateCommandBuffers(device, &cmdBufferAllocInfo, &copyCmd);
+		//command begin record
+		VkCommandBufferBeginInfo cmdBeginInfo{};
+		cmdBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		vkBeginCommandBuffer(copyCmd, &cmdBeginInfo);
+		//actual content of command
+		VkBufferCopy copyRegion{};
+		copyRegion.size = vertexBufferSize;
+		vkCmdCopyBuffer(copyCmd, stagingBuffers.vertices.buffer, vertices.buffer, 1, &copyRegion);
+		copyRegion.size = indexBufferSize;
+		vkCmdCopyBuffer(copyCmd, stagingBuffers.indices.buffer, indices.buffer, 1, &copyRegion);
+		//stop record and encapsulate command
+		VK_CHECK_RESULT(vkEndCommandBuffer(copyCmd));
+		// submit the command buffer to the queue to finish the copy
+		VkSubmitInfo submitInfo{};
+		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		submitInfo.commandBufferCount = 1;
+		submitInfo.pCommandBuffers = &copyCmd;
+		// create fence to ensure that the command buffer has finished executing
+		VkFenceCreateInfo fenceCI{};
+		fenceCI.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+		fenceCI.flags = 0;
+		VkFence fence;
+		VK_CHECK_RESULT(vkCreateFence(device, &fenceCI, nullptr, &fence));
+		// actual submit to the queue
+		vkQueueSubmit(queue, 1, &submitInfo, fence);
+		// Wait for the fence to signal that command buffer has finished executing
+		VK_CHECK_RESULT(vkWaitForFences(device, 1, &fence, VK_TRUE, DEFAULT_FENCE_TIMEOUT));
+		vkDestroyFence(device, fence, nullptr);
+		vkFreeCommandBuffers(device, commandPool, 1, &copyCmd);
+
+		vkDestroyBuffer(device, stagingBuffers.vertices.buffer, nullptr);
+		vkFreeMemory(device, stagingBuffers.vertices.memory, nullptr);
+		vkDestroyBuffer(device, stagingBuffers.indices.buffer, nullptr);
+		vkFreeMemory(device, stagingBuffers.indices.memory, nullptr);
 	}
 
 	void createUniformBuffers() {
@@ -430,7 +460,7 @@ public:
 		submitInfo.signalSemaphoreCount = 1;
 		submitInfo.pSignalSemaphores = signalSemaphores;
 
-		if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, waitFences[currentFrame]) != VK_SUCCESS) {
+		if (vkQueueSubmit(queue, 1, &submitInfo, waitFences[currentFrame]) != VK_SUCCESS) {
 			throw std::runtime_error("failed to submit draw command buffer!");
 		}
 
@@ -517,7 +547,6 @@ public:
 		createSynObjects();
 		//loadModel();
 		createVertexBuffer();
-		createIndexBuffer();
 		createUniformBuffers();
 		createDescriptorSetLayout();
 		createDescriptorPool();
