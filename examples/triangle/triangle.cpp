@@ -21,6 +21,17 @@ public:
 		uint32_t count;
 	} indices;
 
+	struct UniformBuffer {
+		VkDeviceMemory memory;
+		VkBuffer buffer;
+		// The descriptor set stores the resources bound to the binding points in a shader
+		// It connects the binding points of the different shaders with the buffers and images used for those bindings
+		VkDescriptorSet descriptorSet;
+		// We keep a pointer to the mapped buffer, so we can easily update it's contents via a memcpy
+		uint8_t* mapped{ nullptr };
+	};
+	// We use one UBO per frame, so we can have a frame overlap and make sure that uniforms aren't updated while still in use
+	std::array<UniformBuffer, 2> uniformBuffers;
 
 	uint32_t mipLevels;
 
@@ -86,18 +97,14 @@ public:
 	}
 
 	void createUniformBuffers() {
-		VkDeviceSize bufferSize = sizeof(UniformBufferObject);
+		VkDeviceSize bufferSize = sizeof(ShaderData);
 
-		createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniform.buffer, uniform.memory);
+		for (int i = 0; i < 2; i++) {
+			createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 
+				uniformBuffers[i].buffer, uniformBuffers[i].memory);
 
-		vkMapMemory(device, uniform.memory, 0, bufferSize, 0, &uniform.data);
-
-		//.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-		ubo.model = glm::mat4(1.0f);
-		ubo.view = camera.matrices.view;
-		ubo.proj = camera.matrices.perspective;
-
-		memcpy(uniform.data, &ubo, sizeof(ubo));
+			vkMapMemory(device, uniformBuffers[i].memory, 0, bufferSize, 0, (void**)&uniformBuffers[i].mapped);
+		}
 	}
 
 	void createDescriptorSetLayout() {
@@ -108,15 +115,8 @@ public:
 		uboLayoutBinding.pImmutableSamplers = nullptr;
 		uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
-		VkDescriptorSetLayoutBinding samplerBinding{};
-		samplerBinding.binding = 1;
-		samplerBinding.descriptorCount = 1;
-		samplerBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		samplerBinding.pImmutableSamplers = nullptr;
-		samplerBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-
-		std::array< VkDescriptorSetLayoutBinding, 2> bindings = {
-			uboLayoutBinding, samplerBinding
+		std::array< VkDescriptorSetLayoutBinding, 1> bindings = {
+			uboLayoutBinding
 		};
 
 		VkDescriptorSetLayoutCreateInfo layoutInfo{};
@@ -149,33 +149,32 @@ public:
 
 	void createDescriptorSets() {
 
-		VkDescriptorSetAllocateInfo allocInfo{};
-		allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-		allocInfo.descriptorPool = descriptorPool;
-		allocInfo.descriptorSetCount = 1;
-		allocInfo.pSetLayouts = &descriptorSetLayout;
-
-		if (vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet) != VK_SUCCESS) {
-			throw std::runtime_error("failed to allocate descriptor sets!");
-		}
-
 		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+			VkDescriptorSetAllocateInfo allocInfo{};
+			allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+			allocInfo.descriptorPool = descriptorPool;
+			allocInfo.descriptorSetCount = 1;
+			allocInfo.pSetLayouts = &descriptorSetLayout;
+
+			if (vkAllocateDescriptorSets(device, &allocInfo, &uniformBuffers[i].descriptorSet) != VK_SUCCESS) {
+				throw std::runtime_error("failed to allocate descriptor sets!");
+			}
+
+			VkWriteDescriptorSet writeDescriptorSet{};
+
+			// The buffer's information is passed using a descriptor info structure
 			VkDescriptorBufferInfo bufferInfo{};
-			bufferInfo.buffer = uniform.buffer;
-			bufferInfo.offset = 0;
-			bufferInfo.range = sizeof(UniformBufferObject);
+			bufferInfo.buffer = uniformBuffers[i].buffer;
+			bufferInfo.range = sizeof(ShaderData);
 
-			std::array<VkWriteDescriptorSet, 1> descriptorWrites{};
-
-			descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-			descriptorWrites[0].dstSet = descriptorSet;
-			descriptorWrites[0].dstBinding = 0;
-			descriptorWrites[0].dstArrayElement = 0;
-			descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-			descriptorWrites[0].descriptorCount = 1;
-			descriptorWrites[0].pBufferInfo = &bufferInfo;
-
-			vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+			// Binding 0 : Uniform buffer
+			writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			writeDescriptorSet.dstSet = uniformBuffers[i].descriptorSet;
+			writeDescriptorSet.descriptorCount = 1;
+			writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+			writeDescriptorSet.pBufferInfo = &bufferInfo;
+			writeDescriptorSet.dstBinding = 0;
+			vkUpdateDescriptorSets(device, 1, &writeDescriptorSet, 0, nullptr);
 		}
 	}
 
@@ -320,9 +319,6 @@ public:
 
 	}
 
-
-
-
 	void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) {
 		VkCommandBufferBeginInfo beginInfo{};
 		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -367,7 +363,7 @@ public:
 		VkDeviceSize offsets[] = { 0 };
 		vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
 		vkCmdBindIndexBuffer(commandBuffer, indices.buffer, 0, VK_INDEX_TYPE_UINT32);
-		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
+		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &uniformBuffers[currentFrame].descriptorSet, 0, nullptr);
 		vkCmdDrawIndexed(commandBuffer, indices.count, 1, 0, 0, 0);
 
 
@@ -392,6 +388,12 @@ public:
 			throw std::runtime_error("failed to acquire swap chain image!");
 		}
 
+		ShaderData shaderData{};
+		shaderData.model = glm::mat4(1.0f);
+		shaderData.view = camera.matrices.view;
+		shaderData.proj = camera.matrices.perspective;
+
+		memcpy(uniformBuffers[currentFrame].mapped, &shaderData, sizeof(ShaderData));
 		/// <summary>
 		/// ///
 		/// </summary>
@@ -400,7 +402,6 @@ public:
 		auto tDiff = std::chrono::duration<double, std::milli>(tEnd - tStart).count();
 		camera.update(tDiff);
 
-		updateUniformBuffer(currentFrame);
 		vkResetFences(device, 1, &inFlightFences[currentFrame]);
 
 		vkResetCommandBuffer(commandBuffers[currentFrame], 0);
@@ -470,8 +471,10 @@ public:
 		vkDestroyBuffer(device, vertices.buffer, nullptr);
 		vkFreeMemory(device, vertices.memory, nullptr);
 
-		vkDestroyBuffer(device, uniform.buffer, nullptr);
-		vkFreeMemory(device, uniform.memory, nullptr);
+		for (int i = 0; i < 2; ++i) {
+			vkDestroyBuffer(device, uniformBuffers[i].buffer, nullptr);
+			vkFreeMemory(device, uniformBuffers[i].memory, nullptr);
+		}
 
 		vkDestroyDescriptorPool(device, descriptorPool, nullptr);
 		vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
@@ -491,16 +494,6 @@ public:
 		createDescriptorPool();
 		createDescriptorSets();
 		createGraphicsPipeline();
-	}
-	void updateUniformBuffer(uint32_t currentImage) {
-
-		ubo.proj = camera.matrices.perspective;
-		ubo.view = camera.matrices.view;
-
-		
-		memcpy(uniform.data, &ubo, sizeof(ubo));
-
-		
 	}
 
 	glm::mat4 setView(glm::vec3 eye, glm::vec3 at, glm::vec3 tempUp) {

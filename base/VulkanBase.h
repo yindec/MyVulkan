@@ -70,7 +70,7 @@ struct SwapChainSupportDetails {
 	std::vector<VkPresentModeKHR> presentModes;
 };
 
-struct UniformBufferObject {
+struct ShaderData {
 	glm::mat4 model;
 	glm::mat4 view;
 	glm::mat4 proj;
@@ -734,7 +734,7 @@ protected:
 		VkImageView imageView;
 	} depth;
 
-	struct UniformBufferObject {
+	struct ShaderData {
 		glm::mat4 model;
 		glm::mat4 view;
 		glm::mat4 proj;
@@ -1294,12 +1294,4 @@ public:
 		auto app = reinterpret_cast<VulkanExampleBase*>(glfwGetWindowUserPointer(window));
 		app->camera.translate(glm::vec3(-0.0f, 0.0f, dy * 0.5f));
 	}
-
-	UniformBufferObject ubo;
-
-	struct {
-		VkBuffer buffer;
-		VkDeviceMemory memory;
-		void* data;
-	} uniform;
 };
