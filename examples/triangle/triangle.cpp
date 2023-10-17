@@ -3,6 +3,8 @@
 const std::string vertPath = "../../shaders/triangle/triangle.vert.spv";
 const std::string fragPath = "../../shaders/triangle/triangle.frag.spv";
 
+#define MAX_CONCURRENT_FRAMES 2
+
 class VulkanExample : public VulkanExampleBase {
 public:
 	struct Vertex {
@@ -33,19 +35,23 @@ public:
 	// We use one UBO per frame, so we can have a frame overlap and make sure that uniforms aren't updated while still in use
 	std::array<UniformBuffer, 2> uniformBuffers;
 
-	uint32_t mipLevels;
-
-	std::vector<Vertex> vertexBuffer;
-	std::vector<uint32_t> indexBuffer;
-
-	VkDescriptorSetLayout descriptorSetLayout;
-	VkDescriptorPool descriptorPool;
-	VkDescriptorSet descriptorSet;
+	struct ShaderData {
+		glm::mat4 model;
+		glm::mat4 view;
+		glm::mat4 proj;
+	};
 
 	VkPipelineLayout pipelineLayout;
-	VkPipeline graphicsPipeline;
+	VkPipeline pipeline;
+
+	VkDescriptorSetLayout descriptorSetLayout;
+
+	std::array<VkSemaphore, MAX_CONCURRENT_FRAMES> presentCompleteSemaphores;
+	std::array<VkSemaphore, MAX_CONCURRENT_FRAMES> renderCompleteSemaphores;
+	std::array<VkFence, MAX_CONCURRENT_FRAMES> waitFences;
 
 	void createVertexBuffer() {
+		std::vector<Vertex> vertexBuffer;
 		vertexBuffer = {
 			{ {  1.0f,  1.0f, 0.0f }, { 1.0f, 0.0f, 0.0f } },
 			{ { -1.0f,  1.0f, 0.0f }, { 0.0f, 1.0f, 0.0f } },
@@ -73,6 +79,7 @@ public:
 	}
 
 	void createIndexBuffer() {
+		std::vector<uint32_t> indexBuffer;
 		indexBuffer = {
 			0, 1, 2
 		};
@@ -310,7 +317,7 @@ public:
 		pipelineInfo.renderPass = renderPass;
 		pipelineInfo.subpass = 0;
 
-		if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS) {
+		if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline) != VK_SUCCESS) {
 			throw std::runtime_error("failed to create graphics pipeline!");
 		}
 
@@ -343,7 +350,7 @@ public:
 		renderPassInfo.pClearValues = clearValues.data();
 		vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 
 		VkViewport viewport{};
 		viewport.x = 0.0f;
@@ -374,10 +381,10 @@ public:
 	}
 
 	void drawFrame() {
-		vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
+		vkWaitForFences(device, 1, &waitFences[currentFrame], VK_TRUE, UINT64_MAX);
 
 		uint32_t imageIndex;
-		VkResult result = vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, imageAvailableSemaphores[currentFrame],
+		VkResult result = vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, presentCompleteSemaphores[currentFrame],
 			VK_NULL_HANDLE, &imageIndex);
 
 		if (result == VK_ERROR_OUT_OF_DATE_KHR) {
@@ -402,7 +409,7 @@ public:
 		auto tDiff = std::chrono::duration<double, std::milli>(tEnd - tStart).count();
 		camera.update(tDiff);
 
-		vkResetFences(device, 1, &inFlightFences[currentFrame]);
+		vkResetFences(device, 1, &waitFences[currentFrame]);
 
 		vkResetCommandBuffer(commandBuffers[currentFrame], 0);
 		recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
@@ -410,7 +417,7 @@ public:
 		VkSubmitInfo submitInfo{};
 		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
-		VkSemaphore waitSemaphores[] = { imageAvailableSemaphores[currentFrame] };
+		VkSemaphore waitSemaphores[] = { presentCompleteSemaphores[currentFrame] };
 		VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
 		submitInfo.waitSemaphoreCount = 1;
 		submitInfo.pWaitSemaphores = waitSemaphores;
@@ -419,11 +426,11 @@ public:
 		submitInfo.commandBufferCount = 1;
 		submitInfo.pCommandBuffers = &commandBuffers[currentFrame];
 
-		VkSemaphore signalSemaphores[] = { renderFinishedSemaphores[currentFrame] };
+		VkSemaphore signalSemaphores[] = { renderCompleteSemaphores[currentFrame] };
 		submitInfo.signalSemaphoreCount = 1;
 		submitInfo.pSignalSemaphores = signalSemaphores;
 
-		if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS) {
+		if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, waitFences[currentFrame]) != VK_SUCCESS) {
 			throw std::runtime_error("failed to submit draw command buffer!");
 		}
 
@@ -449,6 +456,22 @@ public:
 		}
 
 		currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+	}
+
+	void createSynObjects() {
+		
+		VkSemaphoreCreateInfo semaphoreInfo{};
+		semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+		VkFenceCreateInfo fenceInfo{};
+		fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+		fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+			if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &presentCompleteSemaphores[i]) != VK_SUCCESS ||
+				vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderCompleteSemaphores[i]) != VK_SUCCESS ||
+				vkCreateFence(device, &fenceInfo, nullptr, &waitFences[i]) != VK_SUCCESS) {
+				throw std::runtime_error("failed to create synchronization objects for a frame!");
+			}
+		}
 	}
 
 	VulkanExample() {
@@ -479,13 +502,19 @@ public:
 		vkDestroyDescriptorPool(device, descriptorPool, nullptr);
 		vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
 
-		vkDestroyPipeline(device, graphicsPipeline, nullptr);
+		vkDestroyPipeline(device, pipeline, nullptr);
 		vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
 
+		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+			vkDestroySemaphore(device, renderCompleteSemaphores[i], nullptr);
+			vkDestroySemaphore(device, presentCompleteSemaphores[i], nullptr);
+			vkDestroyFence(device, waitFences[i], nullptr);
+		}
 	}
 
 	void prepare() {
 		VulkanExampleBase::initVulkan();
+		createSynObjects();
 		//loadModel();
 		createVertexBuffer();
 		createIndexBuffer();
