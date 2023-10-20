@@ -50,6 +50,87 @@ public:
 	std::array<VkSemaphore, MAX_CONCURRENT_FRAMES> renderCompleteSemaphores;
 	std::array<VkFence, MAX_CONCURRENT_FRAMES> waitFences;
 
+	VkCommandPool commandPool;
+	std::array<VkCommandBuffer, MAX_CONCURRENT_FRAMES> commandBuffers;
+
+	VulkanExample() {
+
+		camera.flipY = false;
+		camera.type = Camera::CameraType::lookat;
+		//camera.type = Camera::CameraType::firstperson;
+		camera.setPosition(glm::vec3(0.0f, 0.0f, -2.5f));
+		camera.setRotation(glm::vec3(0.0f, 0.0f, 0.0f));
+		camera.setPerspective(45.0f, swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 10.0f);
+
+	}
+
+	~VulkanExample() {
+
+		vkDestroyBuffer(device, indices.buffer, nullptr);
+		vkFreeMemory(device, indices.memory, nullptr);
+
+		vkDestroyBuffer(device, vertices.buffer, nullptr);
+		vkFreeMemory(device, vertices.memory, nullptr);
+
+		for (int i = 0; i < 2; ++i) {
+			vkDestroyBuffer(device, uniformBuffers[i].buffer, nullptr);
+			vkFreeMemory(device, uniformBuffers[i].memory, nullptr);
+		}
+
+		vkDestroyDescriptorPool(device, descriptorPool, nullptr);
+		vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
+
+		vkDestroyPipeline(device, pipeline, nullptr);
+		vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+
+		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+			vkDestroySemaphore(device, renderCompleteSemaphores[i], nullptr);
+			vkDestroySemaphore(device, presentCompleteSemaphores[i], nullptr);
+			vkDestroyFence(device, waitFences[i], nullptr);
+		}
+
+		vkFreeCommandBuffers(device, commandPool, static_cast<uint32_t>(commandBuffers.size()), commandBuffers.data());
+		vkDestroyCommandPool(device, commandPool, nullptr);
+	}
+
+	void createSynObjects() {
+
+		VkSemaphoreCreateInfo semaphoreInfo{};
+		semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+		VkFenceCreateInfo fenceInfo{};
+		fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+		fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+			if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &presentCompleteSemaphores[i]) != VK_SUCCESS ||
+				vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderCompleteSemaphores[i]) != VK_SUCCESS ||
+				vkCreateFence(device, &fenceInfo, nullptr, &waitFences[i]) != VK_SUCCESS) {
+				throw std::runtime_error("failed to create synchronization objects for a frame!");
+			}
+		}
+	}
+
+	void createCommandBuffers() {
+		QueueFamilyIndices queueFamilyIndices = findQueueFamilies(physicalDevice);
+		VkCommandPoolCreateInfo poolInfo{};
+		poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+		poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+		poolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.value();
+
+		if (vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool) != VK_SUCCESS) {
+			throw std::runtime_error("failed to create command pool!");
+		}
+
+		VkCommandBufferAllocateInfo allocateInfo{};
+		allocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+		allocateInfo.commandPool = commandPool;
+		allocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+		allocateInfo.commandBufferCount = (uint32_t)commandBuffers.size();
+
+		if (vkAllocateCommandBuffers(device, &allocateInfo, commandBuffers.data()) != VK_SUCCESS) {
+			throw std::runtime_error("failed to allocate command buffers!");
+		}
+	}
+
 	void createVertexBuffer() {
 		std::vector<Vertex> vertexBuffer;
 		vertexBuffer = {
@@ -76,21 +157,23 @@ public:
 		void* data;
 
 		createBuffer(vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffers.vertices.buffer, stagingBuffers.vertices.memory);
-			
+		createBuffer(indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffers.indices.buffer, stagingBuffers.indices.memory);
+
+		createBuffer(vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertices.buffer, vertices.memory);
+		createBuffer(indexBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, indices.buffer, indices.memory);
+
+		
 		vkMapMemory(device, stagingBuffers.vertices.memory, 0, vertexBufferSize, 0, &data);
 		memcpy(data, vertexBuffer.data(), (size_t)vertexBufferSize);
 		vkUnmapMemory(device, stagingBuffers.vertices.memory);
 
-		createBuffer(vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertices.buffer, vertices.memory);
-
-		createBuffer(indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffers.indices.buffer, stagingBuffers.indices.memory);
 		vkMapMemory(device, stagingBuffers.indices.memory, 0, indexBufferSize, 0, &data);
 		memcpy(data, indexBuffer.data(), (size_t)indexBufferSize);
 		vkUnmapMemory(device, stagingBuffers.indices.memory);
-		createBuffer(indexBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, indices.buffer, indices.memory);
+
 
 		//prepare command
-		VkCommandBuffer copyCmd = beginSingleTimeCommands();
+		VkCommandBuffer copyCmd;
 		VkCommandBufferAllocateInfo cmdBufferAllocInfo{};
 		cmdBufferAllocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
 		cmdBufferAllocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
@@ -144,6 +227,22 @@ public:
 		}
 	}
 
+	void createDescriptorPool() {
+		std::array<VkDescriptorPoolSize, 1> poolSizes{};
+		poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+
+		VkDescriptorPoolCreateInfo poolInfo{};
+		poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+		poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+		poolInfo.pPoolSizes = poolSizes.data();
+		poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+
+		if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
+			throw std::runtime_error("failed to create descriptor pool!");
+		}
+	}
+
 	void createDescriptorSetLayout() {
 		VkDescriptorSetLayoutBinding uboLayoutBinding{};
 		uboLayoutBinding.binding = 0;
@@ -164,23 +263,13 @@ public:
 		if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
 			throw std::runtime_error("failed to create descriptor set layout!");
 		}
-	}
 
-	void createDescriptorPool() {
-		std::array<VkDescriptorPoolSize, 2> poolSizes{};
-		poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
-		poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		poolSizes[1].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
-
-		VkDescriptorPoolCreateInfo poolInfo{};
-		poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-		poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
-		poolInfo.pPoolSizes = poolSizes.data();
-		poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
-
-		if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
-			throw std::runtime_error("failed to create descriptor pool!");
+		VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+		pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+		pipelineLayoutInfo.setLayoutCount = 1;
+		pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
+		if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
+			throw std::runtime_error("failed to create pipeline layout!");
 		}
 	}
 
@@ -214,6 +303,10 @@ public:
 			vkUpdateDescriptorSets(device, 1, &writeDescriptorSet, 0, nullptr);
 		}
 	}
+
+
+
+
 
 	void createGraphicsPipeline() {
 		auto vertShaderCode = readFile(vertPath);
@@ -285,7 +378,7 @@ public:
 		rasterizer.rasterizerDiscardEnable = VK_FALSE;
 		rasterizer.polygonMode = VK_POLYGON_MODE_FILL;	///change
 		rasterizer.lineWidth = 1.0f;					///cahnge
-		rasterizer.cullMode = VK_CULL_MODE_NONE;	///CHANGE
+		rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;	///CHANGE
 		rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE; ///
 		rasterizer.depthBiasEnable = VK_FALSE;
 		rasterizer.depthBiasConstantFactor = 0.0f;
@@ -321,14 +414,6 @@ public:
 		colorBlending.logicOpEnable = VK_FALSE;
 		colorBlending.attachmentCount = 1;
 		colorBlending.pAttachments = &colorBlendAttachment;
-
-		VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
-		pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-		pipelineLayoutInfo.setLayoutCount = 1;
-		pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
-		if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
-			throw std::runtime_error("failed to create pipeline layout!");
-		}
 
 		VkGraphicsPipelineCreateInfo pipelineInfo{};
 		pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -427,7 +512,7 @@ public:
 
 		ShaderData shaderData{};
 		shaderData.model = glm::mat4(1.0f);
-		shaderData.view = camera.matrices.view;
+		shaderData.view = camera.matrices.view;		
 		shaderData.proj = camera.matrices.perspective;
 
 		memcpy(uniformBuffers[currentFrame].mapped, &shaderData, sizeof(ShaderData));
@@ -488,64 +573,11 @@ public:
 		currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 	}
 
-	void createSynObjects() {
-		
-		VkSemaphoreCreateInfo semaphoreInfo{};
-		semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-		VkFenceCreateInfo fenceInfo{};
-		fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-		fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-			if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &presentCompleteSemaphores[i]) != VK_SUCCESS ||
-				vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderCompleteSemaphores[i]) != VK_SUCCESS ||
-				vkCreateFence(device, &fenceInfo, nullptr, &waitFences[i]) != VK_SUCCESS) {
-				throw std::runtime_error("failed to create synchronization objects for a frame!");
-			}
-		}
-	}
-
-	VulkanExample() {
-		
-		//camera.flipY = false;
-		//camera.setPosition(glm::vec3(0.0f, 0.0f, -2.5f));
-		camera.type = Camera::CameraType::lookat;
-		camera.setPosition(glm::vec3(0.0f, 0.0f, -2.5f));
-		camera.setRotation(glm::vec3(0.0f)); 
-		//camera.setRotationSpeed(0.4f);
-		camera.setPerspective(45.0f, swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 10.0f);
-
-	}
-
-	~VulkanExample() {
-
-		vkDestroyBuffer(device, indices.buffer, nullptr);
-		vkFreeMemory(device, indices.memory, nullptr);
-
-		vkDestroyBuffer(device, vertices.buffer, nullptr);
-		vkFreeMemory(device, vertices.memory, nullptr);
-
-		for (int i = 0; i < 2; ++i) {
-			vkDestroyBuffer(device, uniformBuffers[i].buffer, nullptr);
-			vkFreeMemory(device, uniformBuffers[i].memory, nullptr);
-		}
-
-		vkDestroyDescriptorPool(device, descriptorPool, nullptr);
-		vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
-
-		vkDestroyPipeline(device, pipeline, nullptr);
-		vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
-
-		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-			vkDestroySemaphore(device, renderCompleteSemaphores[i], nullptr);
-			vkDestroySemaphore(device, presentCompleteSemaphores[i], nullptr);
-			vkDestroyFence(device, waitFences[i], nullptr);
-		}
-	}
 
 	void prepare() {
-		VulkanExampleBase::initVulkan();
+		VulkanExampleBase::prepare();
 		createSynObjects();
-		//loadModel();
+		createCommandBuffers();
 		createVertexBuffer();
 		createUniformBuffers();
 		createDescriptorSetLayout();
@@ -555,7 +587,8 @@ public:
 	}
 
 	glm::mat4 setView(glm::vec3 eye, glm::vec3 at, glm::vec3 tempUp) {
-		glm::vec3 zaxis = glm::normalize(at - eye);
+		//glm::vec3 zaxis = glm::normalize(at - eye);// usual
+		glm::vec3 zaxis = glm::normalize(eye - at);// reverse
 		glm::vec3 xaxis = glm::normalize(glm::cross(tempUp, zaxis));
 		glm::vec3 yaxis = glm::cross(zaxis, xaxis);
 
@@ -602,6 +635,31 @@ public:
 		result[3][0] = -glm::dot(xaxis, eye);
 		result[3][1] = -glm::dot(yaxis, eye);
 		result[3][2] =  glm::dot(zaxis, eye);
+
+		return result;
+	}
+	glm::mat4 myLookAt(glm::vec3 eye, glm::vec3 at, glm::vec3 tempUp) {
+		glm::vec3 zaxis = glm::normalize(eye - at);// reverse
+		glm::vec3 xaxis = glm::normalize(glm::cross(tempUp, zaxis));
+		glm::vec3 yaxis = glm::cross(zaxis, xaxis);
+
+		glm::mat4 result(1);
+		result[0][0] = xaxis.x;
+		result[0][1] = xaxis.y;
+		result[0][2] = xaxis.z;
+
+		result[1][0] = yaxis.x;
+		result[1][1] = yaxis.y;
+		result[1][2] = yaxis.z;
+
+		result[2][0] = zaxis.x;
+		result[2][1] = zaxis.y;
+		result[2][2] = zaxis.z;
+
+		result[0][3] = -glm::dot(xaxis, eye);
+		result[1][3] = -glm::dot(yaxis, eye);
+		result[2][3] = -glm::dot(zaxis, eye);
+
 
 		return result;
 	}
