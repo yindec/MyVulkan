@@ -9,7 +9,14 @@
 #include "vulkanexamplebase.h"
 #include "VulkanglTFModel.h"
 
+
+#ifdef NDEBUG
 #define ENABLE_VALIDATION false
+#else
+#define ENABLE_VALIDATION true
+#endif
+
+
 
 class VulkanExample: public VulkanExampleBase
 {
